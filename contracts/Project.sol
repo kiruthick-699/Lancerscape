@@ -75,17 +75,22 @@ abstract contract Project {
     /// @param resolver Address resolving the dispute
     /// @param resolution Final status applied to the milestone
     event DisputeResolved(uint256 indexed id, address indexed resolver, MilestoneStatus resolution);
+    /// @dev Emitted when a freelancer is assigned to the project
+    /// @param freelancer Address of the freelancer assigned
+    event FreelancerAssigned(address indexed freelancer);
 
     /* Modifiers (placeholders) */
     /// @dev Restrict access to the client. `require` checks will be added later.
     modifier onlyClient() virtual {
         // access check to ensure caller is `client` will be added here
+        require(msg.sender == client, "Project: caller is not the client");
         _;
     }
 
     /// @dev Restrict access to the freelancer. `require` checks will be added later.
     modifier onlyFreelancer() virtual {
         // access check to ensure caller is `freelancer` will be added here
+        require(msg.sender == freelancer, "Project: caller is not the freelancer");
         _;
     }
 
@@ -93,6 +98,7 @@ abstract contract Project {
     /// @param milestoneId Milestone index to validate
     modifier onlyNotInDispute(uint256 milestoneId) virtual {
         // check to ensure the milestone is not in dispute will be added here
+        require(milestones[milestoneId].status != MilestoneStatus.Disputed, "Project: milestone is in dispute");
         _;
     }
 
@@ -100,6 +106,7 @@ abstract contract Project {
     /// @param milestoneId Milestone index to validate
     modifier onlyValidMilestone(uint256 milestoneId) virtual {
         // validation to ensure milestoneId references an existing milestone will be added here
+        require(milestoneId < milestones.length, "Project: invalid milestone id");
         _;
     }
 
@@ -108,14 +115,37 @@ abstract contract Project {
     /// @notice Assign a freelancer to the project
     /// @dev Signature-only; implementation should set `freelancer`.
     /// @param freelancer_ Address of the freelancer
-    function addFreelancer(address freelancer_) external virtual;
+    /// @notice Assign a freelancer to the project
+    /// @dev Can only be called once by the `client`. Emits `FreelancerAssigned`.
+    /// @param freelancer_ Address of the freelancer
+    function addFreelancer(address freelancer_) external virtual onlyClient {
+        require(freelancer_ != address(0), "Project: freelancer is zero address");
+        require(freelancer == address(0), "Project: freelancer already assigned");
+        freelancer = freelancer_;
+        emit FreelancerAssigned(freelancer_);
+    }
 
     /// @notice Create a milestone placeholder
     /// @dev Signature-only; implementation should append to `milestones` and emit `MilestoneCreated`.
     /// @param title_ Milestone title
     /// @param amount_ Milestone amount (unit-agnostic)
     /// @return milestoneId Index of the created milestone
-    function createMilestone(string calldata title_, uint256 amount_) external virtual returns (uint256 milestoneId);
+    function createMilestone(string calldata title_, uint256 amount_) external virtual onlyClient returns (uint256 milestoneId) {
+        // create a new milestone and initialize status to Pending
+        milestoneId = milestones.length;
+        // copy calldata string into memory for the struct
+        string memory titleCopy = title_;
+        Milestone memory m = Milestone({
+            id: milestoneId,
+            title: titleCopy,
+            amount: amount_,
+            status: MilestoneStatus.Pending,
+            evidenceHash: ""
+        });
+        milestones.push(m);
+        emit MilestoneCreated(milestoneId, titleCopy, amount_);
+        return milestoneId;
+    }
 
     /// @notice Fund a milestone (signature only)
     /// @dev Signature-only; implementations may interact with an escrow contract.
