@@ -1,7 +1,10 @@
+'use client';
+
 import React from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { ConnectButton } from "@rainbow-me/rainbowkit";
 
 const sidebarItems = [
   { label: "Dashboard" },
@@ -31,9 +34,12 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
       {/* Main content area */}
       <div className="flex-1 flex flex-col ml-56">
         {/* Top nav */}
-        <header className="h-16 border-b bg-card flex items-center px-6 sticky top-0 z-10">
+        <header className="h-16 border-b bg-card flex items-center justify-between px-6 sticky top-0 z-10">
           <span className="font-semibold text-lg">LancerScape</span>
-          <ThemeToggle />
+          <div className="flex items-center gap-4">
+            <ConnectButton />
+            <ThemeToggle />
+          </div>
         </header>
         <main className="flex-1 p-6">{children}</main>
       </div>
