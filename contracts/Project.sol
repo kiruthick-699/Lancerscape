@@ -221,7 +221,28 @@ abstract contract Project {
     /// @dev Signature-only; implementation should set status to `Disputed` and emit `DisputeOpened`.
     /// @param milestoneId Milestone index
     /// @param reason_ Reason for dispute
-    function openDispute(uint256 milestoneId, string calldata reason_) external virtual;
+    function openDispute(uint256 milestoneId, string calldata reason_)
+        external
+        virtual
+        onlyValidMilestone(milestoneId)
+        onlyNotInDispute(milestoneId)
+    {
+        // Checks
+        require(msg.sender == client || msg.sender == freelancer, "Project: only client or freelancer");
+        Milestone storage m = milestones[milestoneId];
+        require(
+            m.status == MilestoneStatus.Submitted || m.status == MilestoneStatus.Funded,
+            "Project: milestone not submitted or funded"
+        );
+
+        // Effects
+        m.status = MilestoneStatus.Disputed;
+
+        // Interactions: none (no release/refund here)
+
+        // Event
+        emit DisputeOpened(milestoneId, msg.sender, reason_);
+    }
 
     /// @notice Resolve a dispute for a milestone
     /// @dev Signature-only; implementation should set final status and emit `DisputeResolved`.
