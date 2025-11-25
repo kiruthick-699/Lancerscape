@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
+import "./IEscrow.sol";
 
 /// @title Project (skeleton)
 /// @notice Minimal skeleton for a single freelance project contract
@@ -39,6 +40,8 @@ abstract contract Project {
     string public projectDescription;
 
     Milestone[] public milestones;
+    /// @dev Escrow contract responsible for holding milestone funds (set in derived contract)
+    IEscrow public escrow;
 
     /* Events */
     /// @dev Emitted when a milestone is created
@@ -150,7 +153,23 @@ abstract contract Project {
     /// @notice Fund a milestone (signature only)
     /// @dev Signature-only; implementations may interact with an escrow contract.
     /// @param milestoneId Milestone index
-    function fundMilestone(uint256 milestoneId) external virtual;
+    function fundMilestone(uint256 milestoneId) external virtual onlyClient {
+        // Checks
+        require(milestoneId < milestones.length, "Project: invalid milestone id");
+        Milestone storage m = milestones[milestoneId];
+        require(m.status == MilestoneStatus.Pending, "Project: milestone not pending");
+        require(m.amount > 0, "Project: milestone amount is zero");
+        require(address(escrow) != address(0), "Project: escrow not set");
+
+        // Interactions (no ETH forwarded here)
+        escrow.depositFunds(milestoneId); // external call; client funds Escrow separately in later phase
+
+        // Effects (update state after successful external interaction)
+        m.status = MilestoneStatus.Funded;
+
+        // Emit event reflecting funding
+        emit MilestoneFunded(milestoneId, msg.sender, m.amount);
+    }
 
     /// @notice Submit work for a milestone
     /// @dev Signature-only; implementation should record evidence and emit `WorkSubmitted`.
