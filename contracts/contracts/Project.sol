@@ -36,6 +36,7 @@ abstract contract Project {
     /* State variables */
     address public client;
     address public freelancer;
+    address public admin;
     string public projectTitle;
     string public projectDescription;
 
@@ -82,6 +83,11 @@ abstract contract Project {
     /// @param freelancer Address of the freelancer assigned
     event FreelancerAssigned(address indexed freelancer);
 
+    /// @dev Emitted when the admin is changed
+    /// @param oldAdmin Previous admin address
+    /// @param newAdmin New admin address
+    event AdminChanged(address indexed oldAdmin, address indexed newAdmin);
+
     /* Modifiers (placeholders) */
     /// @dev Restrict access to the client. `require` checks will be added later.
     modifier onlyClient() virtual {
@@ -94,6 +100,12 @@ abstract contract Project {
     modifier onlyFreelancer() virtual {
         // access check to ensure caller is `freelancer` will be added here
         require(msg.sender == freelancer, "Project: caller is not the freelancer");
+        _;
+    }
+
+    /// @dev Restrict access to the admin.
+    modifier onlyAdmin() virtual {
+        require(msg.sender == admin, "Project: caller is not the admin");
         _;
     }
 
@@ -251,7 +263,7 @@ abstract contract Project {
     function resolveDispute(uint256 milestoneId, bool clientWins)
         external
         virtual
-        onlyClient
+        onlyAdmin
         onlyValidMilestone(milestoneId)
     {
         // Checks
