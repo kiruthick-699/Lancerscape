@@ -245,8 +245,31 @@ abstract contract Project {
     }
 
     /// @notice Resolve a dispute for a milestone
-    /// @dev Signature-only; implementation should set final status and emit `DisputeResolved`.
+    /// @dev Sets final status to Resolved and triggers escrow action based on outcome.
     /// @param milestoneId Milestone index
-    /// @param resolution New status to set (e.g., Resolved)
-    function resolveDispute(uint256 milestoneId, MilestoneStatus resolution) external virtual;
+    /// @param clientWins True if client wins (refund), false if freelancer wins (release)
+    function resolveDispute(uint256 milestoneId, bool clientWins)
+        external
+        virtual
+        onlyClient
+        onlyValidMilestone(milestoneId)
+    {
+        // Checks
+        Milestone storage m = milestones[milestoneId];
+        require(m.status == MilestoneStatus.Disputed, "Project: milestone not in dispute");
+        require(address(escrow) != address(0), "Project: escrow not set");
+
+        // Effects
+        m.status = MilestoneStatus.Resolved;
+
+        // Interactions
+        if (clientWins) {
+            escrow.refundFunds(milestoneId);
+        } else {
+            escrow.releaseFunds(milestoneId);
+        }
+
+        // Event
+        emit DisputeResolved(milestoneId, msg.sender, MilestoneStatus.Resolved);
+    }
 }
