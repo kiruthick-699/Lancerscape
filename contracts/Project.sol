@@ -196,7 +196,26 @@ abstract contract Project {
     /// @notice Approve a milestone
     /// @dev Signature-only; implementation should update status and emit `MilestoneApproved`.
     /// @param milestoneId Milestone index
-    function approveMilestone(uint256 milestoneId) external virtual;
+    function approveMilestone(uint256 milestoneId)
+        external
+        virtual
+        onlyClient
+        onlyValidMilestone(milestoneId)
+    {
+        // Checks
+        Milestone storage m = milestones[milestoneId];
+        require(m.status == MilestoneStatus.Submitted, "Project: milestone not submitted");
+        require(address(escrow) != address(0), "Project: escrow not set");
+
+        // Effects
+        m.status = MilestoneStatus.Approved;
+
+        // Interactions
+        escrow.releaseFunds(milestoneId);
+
+        // Event
+        emit MilestoneApproved(milestoneId, msg.sender);
+    }
 
     /// @notice Open a dispute against a milestone
     /// @dev Signature-only; implementation should set status to `Disputed` and emit `DisputeOpened`.
