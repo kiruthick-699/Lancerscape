@@ -175,7 +175,23 @@ abstract contract Project {
     /// @dev Signature-only; implementation should record evidence and emit `WorkSubmitted`.
     /// @param milestoneId Milestone index
     /// @param evidenceHash_ Hash or reference to evidence
-    function submitWork(uint256 milestoneId, string calldata evidenceHash_) external virtual;
+    function submitWork(uint256 milestoneId, string calldata evidenceHash_)
+        external
+        virtual
+        onlyFreelancer
+        onlyValidMilestone(milestoneId)
+    {
+        // Checks
+        Milestone storage m = milestones[milestoneId];
+        require(m.status == MilestoneStatus.Funded, "Project: milestone not funded");
+
+        // Effects
+        m.evidenceHash = evidenceHash_;
+        m.status = MilestoneStatus.Submitted;
+
+        // Interactions: none
+        emit WorkSubmitted(milestoneId, msg.sender, evidenceHash_);
+    }
 
     /// @notice Approve a milestone
     /// @dev Signature-only; implementation should update status and emit `MilestoneApproved`.
