@@ -6,6 +6,7 @@
 
 import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
+import disputeRoutes from './routes/disputeRoutes';
 
 const app: Express = express();
 
@@ -48,6 +49,9 @@ app.get('/health', (_req: Request, res: Response) => {
 // import milestoneRoutes from './routes/milestones';
 // app.use('/api/projects', projectRoutes);
 // app.use('/api/milestones', milestoneRoutes);
+
+// Dispute Routes
+app.use('/api/disputes', disputeRoutes);
 
 app.use('/api', (_req: Request, res: Response) => {
   res.status(200).json({ message: 'LancerScape API - Routes not yet configured' });

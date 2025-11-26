@@ -6,8 +6,7 @@
 
 import { Router } from 'express';
 import { uploadEvidence } from '../middleware/upload';
-// TODO: Import dispute controllers
-// import { openDispute, uploadEvidenceController, getAISummary, getDisputeById } from '../controllers/disputeController';
+import { generateAISummary } from '../controllers/disputeController';
 
 const router = Router();
 
@@ -33,10 +32,7 @@ router.post('/upload-evidence', uploadEvidence.array('files', 5), (_req, res) =>
  * POST /disputes/ai-summary
  * Generate AI-powered summary and recommendation for a dispute
  */
-router.post('/ai-summary', (_req, res) => {
-  // TODO: Implement getAISummary controller
-  res.status(501).json({ error: 'Not implemented' });
-});
+router.post('/ai-summary', generateAISummary);
 
 /**
  * GET /disputes/:id
