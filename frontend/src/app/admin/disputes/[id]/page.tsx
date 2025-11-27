@@ -4,6 +4,20 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
+import { useAccount, useWriteContract } from "wagmi";
+
+const PROJECT_ABI = [
+  {
+    type: "function",
+    name: "resolveDispute",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "milestoneId", type: "uint256" },
+      { name: "clientWins", type: "bool" },
+    ],
+    outputs: [],
+  },
+] as const;
 
 type Dispute = {
   id?: string;
@@ -31,6 +45,8 @@ export default function AdminDisputeReviewPage({ params }: { params: { id: strin
   const [actionLoading, setActionLoading] = useState<"freelancer" | "client" | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const { toast } = useToast();
+  const { address, isConnected } = useAccount();
+  const { writeContractAsync } = useWriteContract();
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
@@ -69,17 +85,51 @@ export default function AdminDisputeReviewPage({ params }: { params: { id: strin
         inconsistencies = Array.isArray(parsed.inconsistencies) ? parsed.inconsistencies : [];
       } catch {}
     }
-    return { summaryText, clientStrengths, freelancerStrengths, inconsistencies, suggestedOutcome: dispute.aiSummary.recommendation };
+    return {
+      summaryText,
+      clientStrengths,
+      freelancerStrengths,
+      inconsistencies,
+      suggestedOutcome: dispute.aiSummary.recommendation,
+    };
   }, [dispute]);
 
   const handleResolve = async (decision: "client" | "freelancer") => {
     try {
       setActionLoading(decision);
       setActionMessage(null);
+
+      // Validate wallet connection & temporary admin rule (admin = client)
+      if (!isConnected || !address) {
+        throw new Error("Connect your wallet to proceed.");
+      }
+      if (dispute?.openedBy && address.toLowerCase() !== dispute.openedBy.toLowerCase()) {
+        throw new Error("Only the client (temporary admin) can resolve this dispute.");
+      }
+
+      // On-chain call (no private keys; user signs in wallet)
+      const contractAddress = process.env.NEXT_PUBLIC_PROJECT_CONTRACT_ADDRESS as `0x${string}` | undefined;
+      if (!contractAddress) {
+        throw new Error("Missing contract address. Set NEXT_PUBLIC_PROJECT_CONTRACT_ADDRESS.");
+      }
+      if (typeof dispute?.milestoneId !== "number") {
+        throw new Error("Invalid milestone id.");
+      }
+
+      const clientWins = decision === "client";
+      toast({ title: "Submitting transaction", description: "Resolving dispute on-chain..." });
+      const txHash = await writeContractAsync({
+        abi: PROJECT_ABI,
+        address: contractAddress,
+        functionName: "resolveDispute",
+        args: [BigInt(dispute.milestoneId), clientWins],
+      });
+      toast({ title: "Transaction submitted", description: `Hash: ${txHash.slice(0, 10)}…` });
+
       const res = await fetch(`${apiUrl}/api/admin/disputes/${params.id}/resolve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // Send both keys for backend compatibility while following new payload shape
+        // Record decision in backend for auditing
         body: JSON.stringify({ decision, resolverDecision: decision }),
       });
       const data = await res.json().catch(() => ({}));
