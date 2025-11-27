@@ -193,3 +193,52 @@ export const attachAISummary = async (
 
   return dispute;
 };
+
+/**
+ * listDisputes
+ * 
+ * Purpose: Retrieve all disputes from storage
+ * @returns Array of dispute objects
+ */
+export const listDisputes = async (): Promise<any[]> => {
+  return Array.from(disputesDB.values());
+};
+
+/**
+ * resolveDisputeRecord
+ * 
+ * Purpose: Finalize a dispute with an admin decision
+ * NO blockchain calls here. Purely updates stored record.
+ * 
+ * @param disputeId - Dispute identifier
+ * @param decision - "client" or "freelancer"
+ * @returns Updated dispute object
+ */
+export const resolveDisputeRecord = async (
+  disputeId: string,
+  decision: 'client' | 'freelancer'
+): Promise<any> => {
+  if (!disputeId || typeof disputeId !== 'string') {
+    throw new Error('Invalid disputeId');
+  }
+  if (decision !== 'client' && decision !== 'freelancer') {
+    throw new Error('Invalid decision: must be "client" or "freelancer"');
+  }
+
+  const dispute = disputesDB.get(disputeId);
+  if (!dispute) {
+    throw new Error('Dispute not found');
+  }
+
+  if (dispute.status === 'resolved' || dispute.status === 'closed') {
+    throw new Error('Dispute already finalized');
+  }
+
+  dispute.status = 'resolved';
+  dispute.resolution = decision === 'client' ? 'client_wins' : 'freelancer_wins';
+  dispute.resolvedAt = new Date().toISOString();
+  dispute.lastModified = new Date().toISOString();
+
+  disputesDB.set(disputeId, dispute);
+  return dispute;
+};
