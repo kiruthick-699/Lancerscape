@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { useToast } from "@/components/ui/use-toast";
 
 type Dispute = {
   id?: string;
@@ -29,6 +30,7 @@ export default function AdminDisputeReviewPage({ params }: { params: { id: strin
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<"freelancer" | "client" | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const { toast } = useToast();
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
@@ -77,17 +79,28 @@ export default function AdminDisputeReviewPage({ params }: { params: { id: strin
       const res = await fetch(`${apiUrl}/api/admin/disputes/${params.id}/resolve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resolverDecision: decision }),
+        // Send both keys for backend compatibility while following new payload shape
+        body: JSON.stringify({ decision, resolverDecision: decision }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(data.error || `Failed with status ${res.status}`);
       }
-      setActionMessage(`Decision recorded: ${data.decision || decision}`);
+      const decided = (data.decision || decision) as "client" | "freelancer";
+      setActionMessage(`Decision recorded: ${decided}`);
       // Optimistically update local status
       setDispute((prev) => (prev ? { ...prev, status: "resolved" } : prev));
+      toast({
+        title: "Resolution Saved",
+        description:
+          decided === "freelancer"
+            ? "Funds will be released to the freelancer (off-chain for now)."
+            : "Client refund recorded (off-chain for now).",
+      });
     } catch (err) {
-      setActionMessage(err instanceof Error ? err.message : "Failed to resolve dispute");
+      const msg = err instanceof Error ? err.message : "Failed to resolve dispute";
+      setActionMessage(msg);
+      toast({ title: "Resolution Failed", description: msg, variant: "destructive" });
     } finally {
       setActionLoading(null);
     }
