@@ -6,8 +6,36 @@ import { useCreateMilestone } from "@/lib/hooks/useProject";
 import { useFundMilestone } from "@/lib/hooks/useFundMilestone";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { FormField, FormLabel, FormControl, FormMessage } from "@/components/ui/form";
 import { parseEther, formatEther } from "viem";
 import { projectABI } from "@/lib/contracts";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+
+const milestoneSchema = z.object({
+  contractAddress: z.string()
+    .min(1, "Contract address is required")
+    .regex(/^0x[a-fA-F0-9]{40}$/, "Invalid contract address format"),
+  title: z.string()
+    .min(1, "Title is required")
+    .min(3, "Title must be at least 3 characters"),
+  amountEth: z.string()
+    .min(1, "Amount is required")
+    .refine((val) => !isNaN(parseFloat(val)) && parseFloat(val) > 0, "Amount must be a positive number"),
+});
+
+const fundMilestoneSchema = z.object({
+  milestoneId: z.string()
+    .min(1, "Milestone ID is required")
+    .refine((val) => !isNaN(parseInt(val)) && parseInt(val) >= 0, "Milestone ID must be a non-negative number"),
+  fundAmountEth: z.string()
+    .min(1, "Amount is required")
+    .refine((val) => !isNaN(parseFloat(val)) && parseFloat(val) > 0, "Amount must be a positive number"),
+});
+
+type MilestoneFormData = z.infer<typeof milestoneSchema>;
+type FundMilestoneFormData = z.infer<typeof fundMilestoneSchema>;
 
 export default function ProjectDetailsPage({
   params,
@@ -16,15 +44,31 @@ export default function ProjectDetailsPage({
 }) {
   const { isConnected } = useAccount();
 
-  // Allow entering the project contract address or load from env
-  const [contractAddress, setContractAddress] = useState<string>(
-    process.env.NEXT_PUBLIC_PROJECT_ADDRESS || ""
-  );
-  const [title, setTitle] = useState("");
-  const [amountEth, setAmountEth] = useState("");
   const [milestoneId, setMilestoneId] = useState("");
-  const [fundAmountEth, setFundAmountEth] = useState("");
 
+  const {
+    register: registerMilestone,
+    handleSubmit: handleSubmitMilestone,
+    formState: { errors: milestoneErrors },
+    watch: watchMilestone,
+    reset: resetMilestone,
+  } = useForm<MilestoneFormData>({
+    resolver: zodResolver(milestoneSchema),
+    defaultValues: {
+      contractAddress: process.env.NEXT_PUBLIC_PROJECT_ADDRESS || "",
+    },
+  });
+
+  const {
+    register: registerFund,
+    handleSubmit: handleSubmitFund,
+    formState: { errors: fundErrors },
+    reset: resetFund,
+  } = useForm<FundMilestoneFormData>({
+    resolver: zodResolver(fundMilestoneSchema),
+  });
+
+  const contractAddress = watchMilestone("contractAddress");
 
   const { createMilestone, isPending, isConfirming, isSuccess, error } =
     useCreateMilestone(contractAddress as `0x${string}`);
@@ -72,95 +116,37 @@ export default function ProjectDetailsPage({
     "Disputed",
     "Resolved",
   ] as const;
-  // Fund milestone handler
-  const handleFundMilestone = async (e: React.FormEvent) => {
-    e.preventDefault();
 
+  const onSubmitMilestone = async (data: MilestoneFormData) => {
     if (!isConnected) {
-      alert("Please connect your wallet first");
-      return;
-    }
-
-    if (!contractAddress || !contractAddress.startsWith("0x") || contractAddress.length !== 42) {
-      alert("Please provide a valid project contract address");
-      return;
-    }
-
-    if (!milestoneId.trim()) {
-      alert("Please enter a milestone ID");
-      return;
-    }
-
-    const fundAmountStr = fundAmountEth.trim();
-    if (!fundAmountStr) {
-      alert("Please enter an amount in ETH");
-      return;
-    }
-
-    let fundAmountWei: bigint;
-    try {
-      fundAmountWei = parseEther(fundAmountStr as `${number}`);
-    } catch {
-      alert("Invalid ETH amount");
-      return;
-    }
-
-    let milestoneIdNum: bigint;
-    try {
-      milestoneIdNum = BigInt(milestoneId);
-    } catch {
-      alert("Invalid milestone ID");
       return;
     }
 
     try {
-      await fundMilestone(milestoneIdNum, fundAmountWei);
+      const amountWei = parseEther(data.amountEth as `${number}`);
+      await createMilestone(data.title, amountWei);
+      resetMilestone({
+        contractAddress: data.contractAddress,
+        title: "",
+        amountEth: "",
+      });
     } catch (err) {
       console.error(err);
-      alert("Failed to fund milestone");
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
+  const onSubmitFund = async (data: FundMilestoneFormData) => {
     if (!isConnected) {
-      alert("Please connect your wallet first");
-      return;
-    }
-
-    if (!contractAddress || !contractAddress.startsWith("0x") || contractAddress.length !== 42) {
-      alert("Please provide a valid project contract address");
-      return;
-    }
-
-    if (!title.trim()) {
-      alert("Please enter a milestone title");
-      return;
-    }
-
-    const amountStr = amountEth.trim();
-    if (!amountStr) {
-      alert("Please enter an amount in ETH");
-      return;
-    }
-
-    let amountWei: bigint;
-    try {
-      amountWei = parseEther(amountStr as `${number}`);
-    } catch {
-      alert("Invalid ETH amount");
       return;
     }
 
     try {
-      await createMilestone(title, amountWei);
-      alert("Milestone created successfully");
-      setTitle("");
-      setAmountEth("");
+      const fundAmountWei = parseEther(data.fundAmountEth as `${number}`);
+      const milestoneIdNum = BigInt(data.milestoneId);
+      await fundMilestone(milestoneIdNum, fundAmountWei);
+      resetFund();
     } catch (err) {
       console.error(err);
-      alert("Failed to create milestone");
     }
   };
 
@@ -168,51 +154,48 @@ export default function ProjectDetailsPage({
     <div className="max-w-2xl mx-auto">
       <h1 className="text-2xl font-bold mb-4">Project {params.id}</h1>
       <Card className="p-6 space-y-4">
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="contract" className="block text-sm font-medium mb-2">
-              Project Contract Address
-            </label>
-            <input
-              id="contract"
-              type="text"
-              value={contractAddress}
-              onChange={(e) => setContractAddress(e.target.value)}
-              placeholder="0x..."
-              className="w-full px-3 py-2 border rounded-md bg-background"
-              disabled={isPending || isConfirming}
-            />
-          </div>
+        <form onSubmit={handleSubmitMilestone(onSubmitMilestone)} className="space-y-4">
+          <FormField name="contractAddress" error={milestoneErrors.contractAddress?.message}>
+            <FormLabel>Project Contract Address</FormLabel>
+            <FormControl>
+              <input
+                {...registerMilestone("contractAddress")}
+                type="text"
+                placeholder="0x..."
+                className="w-full px-3 py-2 border rounded-md bg-background"
+                disabled={isPending || isConfirming}
+              />
+            </FormControl>
+            <FormMessage />
+          </FormField>
 
-          <div>
-            <label htmlFor="title" className="block text-sm font-medium mb-2">
-              Milestone Title
-            </label>
-            <input
-              id="title"
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g., Design Phase"
-              className="w-full px-3 py-2 border rounded-md bg-background"
-              disabled={isPending || isConfirming}
-            />
-          </div>
+          <FormField name="title" error={milestoneErrors.title?.message}>
+            <FormLabel>Milestone Title</FormLabel>
+            <FormControl>
+              <input
+                {...registerMilestone("title")}
+                type="text"
+                placeholder="e.g., Design Phase"
+                className="w-full px-3 py-2 border rounded-md bg-background"
+                disabled={isPending || isConfirming}
+              />
+            </FormControl>
+            <FormMessage />
+          </FormField>
 
-          <div>
-            <label htmlFor="amount" className="block text-sm font-medium mb-2">
-              Amount (ETH)
-            </label>
-            <input
-              id="amount"
-              type="text"
-              value={amountEth}
-              onChange={(e) => setAmountEth(e.target.value)}
-              placeholder="0.1"
-              className="w-full px-3 py-2 border rounded-md bg-background"
-              disabled={isPending || isConfirming}
-            />
-          </div>
+          <FormField name="amountEth" error={milestoneErrors.amountEth?.message}>
+            <FormLabel>Amount (ETH)</FormLabel>
+            <FormControl>
+              <input
+                {...registerMilestone("amountEth")}
+                type="text"
+                placeholder="0.1"
+                className="w-full px-3 py-2 border rounded-md bg-background"
+                disabled={isPending || isConfirming}
+              />
+            </FormControl>
+            <FormMessage />
+          </FormField>
 
 
           {error && (
@@ -246,36 +229,38 @@ export default function ProjectDetailsPage({
         </form>
 
         {/* Fund Milestone Form */}
-        <form onSubmit={handleFundMilestone} className="space-y-4 border-t pt-6 mt-6">
+        <form onSubmit={handleSubmitFund(onSubmitFund)} className="space-y-4 border-t pt-6 mt-6">
           <h2 className="text-lg font-semibold">Fund a Milestone</h2>
-          <div>
-            <label htmlFor="milestoneId" className="block text-sm font-medium mb-2">
-              Milestone ID
-            </label>
-            <input
-              id="milestoneId"
-              type="text"
-              value={milestoneId}
-              onChange={(e) => setMilestoneId(e.target.value)}
-              placeholder="e.g., 0"
-              className="w-full px-3 py-2 border rounded-md bg-background"
-              disabled={isFunding || isFundingConfirming}
-            />
-          </div>
-          <div>
-            <label htmlFor="fundAmount" className="block text-sm font-medium mb-2">
-              Amount to Fund (ETH)
-            </label>
-            <input
-              id="fundAmount"
-              type="text"
-              value={fundAmountEth}
-              onChange={(e) => setFundAmountEth(e.target.value)}
-              placeholder="e.g., 0.1"
-              className="w-full px-3 py-2 border rounded-md bg-background"
-              disabled={isFunding || isFundingConfirming}
-            />
-          </div>
+          <FormField name="milestoneId" error={fundErrors.milestoneId?.message}>
+            <FormLabel>Milestone ID</FormLabel>
+            <FormControl>
+              <input
+                {...registerFund("milestoneId")}
+                type="text"
+                placeholder="e.g., 0"
+                className="w-full px-3 py-2 border rounded-md bg-background"
+                disabled={isFunding || isFundingConfirming}
+                onChange={(e) => {
+                  setMilestoneId(e.target.value);
+                  registerFund("milestoneId").onChange(e);
+                }}
+              />
+            </FormControl>
+            <FormMessage />
+          </FormField>
+          <FormField name="fundAmountEth" error={fundErrors.fundAmountEth?.message}>
+            <FormLabel>Amount to Fund (ETH)</FormLabel>
+            <FormControl>
+              <input
+                {...registerFund("fundAmountEth")}
+                type="text"
+                placeholder="e.g., 0.1"
+                className="w-full px-3 py-2 border rounded-md bg-background"
+                disabled={isFunding || isFundingConfirming}
+              />
+            </FormControl>
+            <FormMessage />
+          </FormField>
           {fundError && (
             <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-red-800 dark:text-red-200 text-sm">
               Error: {fundError.message}

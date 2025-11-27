@@ -1,33 +1,42 @@
 'use client';
 
-import { useState } from 'react';
 import { useAccount } from 'wagmi';
 import { useCreateProject } from '@/lib/hooks/useFactory';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { FormField, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
+
+const projectSchema = z.object({
+  title: z.string().min(1, 'Project title is required').min(3, 'Title must be at least 3 characters'),
+  description: z.string().min(1, 'Description is required').min(10, 'Description must be at least 10 characters'),
+});
+
+type ProjectFormData = z.infer<typeof projectSchema>;
 
 export default function CreateProjectPage() {
   const { address, isConnected } = useAccount();
   const { createProject, isPending, isConfirming, isSuccess, error } = useCreateProject();
   
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+    reset,
+  } = useForm<ProjectFormData>({
+    resolver: zodResolver(projectSchema),
+  });
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
+  const onSubmit = async (data: ProjectFormData) => {
     if (!isConnected || !address) {
-      alert('Please connect your wallet first');
-      return;
-    }
-
-    if (!title.trim() || !description.trim()) {
-      alert('Please fill in all fields');
       return;
     }
 
     try {
-      await createProject(title, description, address);
+      await createProject(data.title, data.description, address);
+      reset();
     } catch (err) {
       console.error('Error creating project:', err);
     }
@@ -38,36 +47,34 @@ export default function CreateProjectPage() {
       <h1 className="text-2xl font-bold mb-4">Create Project</h1>
       
       <Card className="p-6">
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="title" className="block text-sm font-medium mb-2">
-              Project Title
-            </label>
-            <input
-              id="title"
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Enter project title"
-              className="w-full px-3 py-2 border rounded-md bg-background"
-              disabled={isPending || isConfirming}
-            />
-          </div>
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <FormField name="title" error={errors.title?.message}>
+            <FormLabel>Project Title</FormLabel>
+            <FormControl>
+              <input
+                {...register('title')}
+                type="text"
+                placeholder="Enter project title"
+                className="w-full px-3 py-2 border rounded-md bg-background"
+                disabled={isPending || isConfirming}
+              />
+            </FormControl>
+            <FormMessage />
+          </FormField>
 
-          <div>
-            <label htmlFor="description" className="block text-sm font-medium mb-2">
-              Project Description
-            </label>
-            <textarea
-              id="description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Enter project description"
-              rows={4}
-              className="w-full px-3 py-2 border rounded-md bg-background"
-              disabled={isPending || isConfirming}
-            />
-          </div>
+          <FormField name="description" error={errors.description?.message}>
+            <FormLabel>Project Description</FormLabel>
+            <FormControl>
+              <textarea
+                {...register('description')}
+                placeholder="Enter project description"
+                rows={4}
+                className="w-full px-3 py-2 border rounded-md bg-background"
+                disabled={isPending || isConfirming}
+              />
+            </FormControl>
+            <FormMessage />
+          </FormField>
 
           {error && (
             <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-red-800 dark:text-red-200 text-sm">
