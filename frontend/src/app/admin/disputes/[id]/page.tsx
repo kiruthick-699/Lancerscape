@@ -1,69 +1,129 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 
+type Dispute = {
+  id?: string;
+  projectId?: string;
+  milestoneId?: number;
+  openedBy?: string;
+  reason?: string; // client statement
+  freelancerResponse?: string | null;
+  status?: string;
+  evidenceHashes?: string[];
+  aiSummary?: {
+    summary?: string;
+    recommendation?: "approve" | "reject" | "partial";
+    confidence?: number;
+    reasoning?: string; // JSON string with strengths & inconsistencies
+  } | null;
+  milestoneTitle?: string;
+  amount?: string;
+};
+
 export default function AdminDisputeReviewPage({ params }: { params: { id: string } }) {
-  const [loading, setLoading] = useState(false);
+  const [dispute, setDispute] = useState<Dispute | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<"freelancer" | "client" | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
 
-  // Placeholder data - will be replaced with actual API calls
-  const milestoneDetails = {
-    projectId: "0x1234...5678",
-    milestoneId: params.id,
-    title: "Design Phase Completion",
-    amount: "0.5 ETH",
-    status: "Disputed",
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+
+  useEffect(() => {
+    const run = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const res = await fetch(`${apiUrl}/api/admin/disputes/${params.id}`);
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || `Failed with status ${res.status}`);
+        }
+        const data = await res.json();
+        setDispute(data.dispute || null);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load dispute");
+      } finally {
+        setLoading(false);
+      }
+    };
+    run();
+  }, [apiUrl, params.id]);
+
+  const aiParsed = useMemo(() => {
+    if (!dispute?.aiSummary) return null;
+    const summaryText = dispute.aiSummary.summary || "";
+    let clientStrengths: string[] = [];
+    let freelancerStrengths: string[] = [];
+    let inconsistencies: string[] = [];
+    if (dispute.aiSummary.reasoning) {
+      try {
+        const parsed = JSON.parse(dispute.aiSummary.reasoning);
+        clientStrengths = Array.isArray(parsed.clientStrengths) ? parsed.clientStrengths : [];
+        freelancerStrengths = Array.isArray(parsed.freelancerStrengths) ? parsed.freelancerStrengths : [];
+        inconsistencies = Array.isArray(parsed.inconsistencies) ? parsed.inconsistencies : [];
+      } catch {}
+    }
+    return { summaryText, clientStrengths, freelancerStrengths, inconsistencies, suggestedOutcome: dispute.aiSummary.recommendation };
+  }, [dispute]);
+
+  const handleResolve = async (decision: "client" | "freelancer") => {
+    try {
+      setActionLoading(decision);
+      setActionMessage(null);
+      const res = await fetch(`${apiUrl}/api/admin/disputes/${params.id}/resolve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resolverDecision: decision }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || `Failed with status ${res.status}`);
+      }
+      setActionMessage(`Decision recorded: ${data.decision || decision}`);
+      // Optimistically update local status
+      setDispute((prev) => (prev ? { ...prev, status: "resolved" } : prev));
+    } catch (err) {
+      setActionMessage(err instanceof Error ? err.message : "Failed to resolve dispute");
+    } finally {
+      setActionLoading(null);
+    }
   };
 
-  const clientStatement = "The delivered design does not match the agreed specifications. Key features are missing and the color scheme is incorrect.";
-  
-  const freelancerStatement = "All deliverables were completed as per the original requirements. The client requested additional changes after approval of initial designs.";
+  if (loading) {
+    return (
+      <div className="max-w-5xl mx-auto">
+        <Card className="p-6">
+          <div className="flex items-center space-x-3">
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent"></div>
+            <p className="text-sm text-muted-foreground">Loading dispute…</p>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
-  const evidenceFiles = [
-    "original_requirements.pdf",
-    "design_mockups_v1.zip",
-    "client_approval_email.png",
-    "final_deliverables.zip",
-  ];
+  if (error || !dispute) {
+    return (
+      <div className="max-w-5xl mx-auto">
+        <Card className="p-6 border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/20">
+          <p className="text-sm text-red-800 dark:text-red-200">{error || "Dispute not found"}</p>
+        </Card>
+      </div>
+    );
+  }
 
-  const aiSummary = {
-    summaryText: "Dispute centers on scope creep and specification clarity. Both parties have valid concerns.",
-    clientStrengths: [
-      "Provided detailed requirements documentation",
-      "Clear communication of initial expectations",
-    ],
-    freelancerStrengths: [
-      "Submitted work on time",
-      "Provided evidence of client approval",
-    ],
-    inconsistencies: [
-      "Discrepancy in agreed design specifications",
-      "Unclear change request process",
-    ],
-    suggestedOutcome: "partial",
-  };
-
-  const handleReleaseFunds = async () => {
-    setLoading(true);
-    // TODO: Implement blockchain logic to release funds to freelancer
-    console.log("Release funds to freelancer");
-    setTimeout(() => setLoading(false), 1000);
-  };
-
-  const handleRefundClient = async () => {
-    setLoading(true);
-    // TODO: Implement blockchain logic to refund client
-    console.log("Refund client");
-    setTimeout(() => setLoading(false), 1000);
-  };
+  const evidenceFiles = Array.isArray(dispute.evidenceHashes) ? dispute.evidenceHashes : [];
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Admin Dispute Review</h1>
         <span className="px-3 py-1 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 text-sm font-medium">
-          Pending Review
+          {dispute.status === "resolved" ? "Resolved" : "Pending Review"}
         </span>
       </div>
 
@@ -73,23 +133,23 @@ export default function AdminDisputeReviewPage({ params }: { params: { id: strin
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
             <span className="text-muted-foreground">Project ID:</span>
-            <p className="font-mono mt-1">{milestoneDetails.projectId}</p>
+            <p className="font-mono mt-1">{dispute.projectId || "-"}</p>
           </div>
           <div>
             <span className="text-muted-foreground">Milestone ID:</span>
-            <p className="font-mono mt-1">{milestoneDetails.milestoneId}</p>
+            <p className="font-mono mt-1">{typeof dispute.milestoneId === "number" ? dispute.milestoneId : "-"}</p>
           </div>
           <div>
             <span className="text-muted-foreground">Title:</span>
-            <p className="font-medium mt-1">{milestoneDetails.title}</p>
+            <p className="font-medium mt-1">{dispute.milestoneTitle || "—"}</p>
           </div>
           <div>
             <span className="text-muted-foreground">Amount:</span>
-            <p className="font-medium mt-1">{milestoneDetails.amount}</p>
+            <p className="font-medium mt-1">{dispute.amount || "—"}</p>
           </div>
           <div>
-            <span className="text-muted-foreground">Status:</span>
-            <p className="font-medium mt-1">{milestoneDetails.status}</p>
+            <span className="text-muted-foreground">Opened By:</span>
+            <p className="font-mono mt-1">{dispute.openedBy || "-"}</p>
           </div>
         </div>
       </Card>
@@ -101,7 +161,7 @@ export default function AdminDisputeReviewPage({ params }: { params: { id: strin
           <span>Client Statement</span>
         </h2>
         <p className="text-sm leading-relaxed bg-blue-50 dark:bg-blue-900/10 p-4 rounded-md border border-blue-100 dark:border-blue-900/30">
-          {clientStatement}
+          {dispute.reason || "—"}
         </p>
       </Card>
 
@@ -112,7 +172,7 @@ export default function AdminDisputeReviewPage({ params }: { params: { id: strin
           <span>Freelancer Statement</span>
         </h2>
         <p className="text-sm leading-relaxed bg-green-50 dark:bg-green-900/10 p-4 rounded-md border border-green-100 dark:border-green-900/30">
-          {freelancerStatement}
+          {dispute.freelancerResponse || "—"}
         </p>
       </Card>
 
@@ -143,66 +203,84 @@ export default function AdminDisputeReviewPage({ params }: { params: { id: strin
           <h2 className="text-lg font-semibold">AI Analysis Summary</h2>
         </div>
 
-        <div className="space-y-4">
-          {/* Summary Text */}
-          <div>
-            <h3 className="text-sm font-medium mb-2">Summary</h3>
-            <p className="text-sm bg-purple-50 dark:bg-purple-900/10 p-3 rounded-md">
-              {aiSummary.summaryText}
-            </p>
-          </div>
-
-          {/* Suggested Outcome */}
-          <div>
-            <h3 className="text-sm font-medium mb-2">AI Suggested Outcome</h3>
-            <div className="inline-block px-4 py-2 rounded-md bg-purple-100 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800">
-              <span className="text-purple-800 dark:text-purple-200 font-medium capitalize">
-                {aiSummary.suggestedOutcome}
-              </span>
-            </div>
-          </div>
-
-          <div className="grid md:grid-cols-2 gap-4">
-            {/* Client Strengths */}
+        {aiParsed ? (
+          <div className="space-y-4">
+            {/* Summary Text */}
             <div>
-              <h3 className="text-sm font-medium mb-2">Client Strengths</h3>
-              <ul className="space-y-1">
-                {aiSummary.clientStrengths.map((strength, idx) => (
-                  <li key={idx} className="flex items-start space-x-2 text-sm">
-                    <span className="text-blue-600 dark:text-blue-400 mt-0.5">✓</span>
-                    <span className="text-muted-foreground">{strength}</span>
-                  </li>
-                ))}
-              </ul>
+              <h3 className="text-sm font-medium mb-2">Summary</h3>
+              <p className="text-sm bg-purple-50 dark:bg-purple-900/10 p-3 rounded-md">
+                {aiParsed.summaryText}
+              </p>
             </div>
 
-            {/* Freelancer Strengths */}
+            {/* Suggested Outcome */}
+            {aiParsed.suggestedOutcome && (
+              <div>
+                <h3 className="text-sm font-medium mb-2">AI Suggested Outcome</h3>
+                <div className="inline-block px-4 py-2 rounded-md bg-purple-100 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800">
+                  <span className="text-purple-800 dark:text-purple-200 font-medium capitalize">
+                    {aiParsed.suggestedOutcome}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <div className="grid md:grid-cols-2 gap-4">
+              {/* Client Strengths */}
+              <div>
+                <h3 className="text-sm font-medium mb-2">Client Strengths</h3>
+                {aiParsed.clientStrengths.length > 0 ? (
+                  <ul className="space-y-1">
+                    {aiParsed.clientStrengths.map((s, idx) => (
+                      <li key={idx} className="flex items-start space-x-2 text-sm">
+                        <span className="text-blue-600 dark:text-blue-400 mt-0.5">✓</span>
+                        <span className="text-muted-foreground">{s}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-muted-foreground">—</p>
+                )}
+              </div>
+
+              {/* Freelancer Strengths */}
+              <div>
+                <h3 className="text-sm font-medium mb-2">Freelancer Strengths</h3>
+                {aiParsed.freelancerStrengths.length > 0 ? (
+                  <ul className="space-y-1">
+                    {aiParsed.freelancerStrengths.map((s, idx) => (
+                      <li key={idx} className="flex items-start space-x-2 text-sm">
+                        <span className="text-green-600 dark:text-green-400 mt-0.5">✓</span>
+                        <span className="text-muted-foreground">{s}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-muted-foreground">—</p>
+                )}
+              </div>
+            </div>
+
+            {/* Inconsistencies */}
             <div>
-              <h3 className="text-sm font-medium mb-2">Freelancer Strengths</h3>
-              <ul className="space-y-1">
-                {aiSummary.freelancerStrengths.map((strength, idx) => (
-                  <li key={idx} className="flex items-start space-x-2 text-sm">
-                    <span className="text-green-600 dark:text-green-400 mt-0.5">✓</span>
-                    <span className="text-muted-foreground">{strength}</span>
-                  </li>
-                ))}
-              </ul>
+              <h3 className="text-sm font-medium mb-2">Inconsistencies</h3>
+              {aiParsed.inconsistencies.length > 0 ? (
+                <ul className="space-y-1">
+                  {aiParsed.inconsistencies.map((item, idx) => (
+                    <li key={idx} className="flex items-start space-x-2 text-sm">
+                      <span className="text-amber-600 dark:text-amber-400 mt-0.5">⚠</span>
+                      <span className="text-muted-foreground">{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-muted-foreground">—</p>
+              )}
             </div>
           </div>
-
-          {/* Inconsistencies */}
-          <div>
-            <h3 className="text-sm font-medium mb-2">Inconsistencies</h3>
-            <ul className="space-y-1">
-              {aiSummary.inconsistencies.map((item, idx) => (
-                <li key={idx} className="flex items-start space-x-2 text-sm">
-                  <span className="text-amber-600 dark:text-amber-400 mt-0.5">⚠</span>
-                  <span className="text-muted-foreground">{item}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">AI summary not available.</p>
+        )}
       </Card>
 
       {/* Admin Action Buttons */}
@@ -213,24 +291,24 @@ export default function AdminDisputeReviewPage({ params }: { params: { id: strin
         </p>
         <div className="grid md:grid-cols-2 gap-4">
           <Button
-            onClick={handleReleaseFunds}
-            disabled={loading}
+            onClick={() => handleResolve("freelancer")}
+            disabled={actionLoading !== null}
             className="w-full bg-green-600 hover:bg-green-700"
           >
-            {loading ? "Processing..." : "Release Funds to Freelancer"}
+            {actionLoading === "freelancer" ? "Processing..." : "Release Funds to Freelancer"}
           </Button>
           <Button
-            onClick={handleRefundClient}
-            disabled={loading}
+            onClick={() => handleResolve("client")}
+            disabled={actionLoading !== null}
             variant="ghost"
             className="w-full border-2 border-blue-600 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20"
           >
-            {loading ? "Processing..." : "Refund Client"}
+            {actionLoading === "client" ? "Processing..." : "Refund Client"}
           </Button>
         </div>
-        <p className="text-xs text-muted-foreground mt-3 text-center">
-          ⚠️ This action will be recorded on-chain and cannot be reversed.
-        </p>
+        {actionMessage && (
+          <p className="text-xs mt-3 text-center text-muted-foreground">{actionMessage}</p>
+        )}
       </Card>
     </div>
   );
