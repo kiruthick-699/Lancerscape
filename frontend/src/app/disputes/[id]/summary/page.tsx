@@ -1,8 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { useReadContract } from "wagmi";
+
+const PROJECT_READ_ABI = [
+  {
+    type: "function",
+    name: "isMilestoneResolved",
+    stateMutability: "view",
+    inputs: [{ name: "milestoneId", type: "uint256" }],
+    outputs: [{ name: "resolved", type: "bool" }],
+  },
+] as const;
 
 export default function DisputeSummaryPage({ params }: { params: { id: string } }) {
   const [loading, setLoading] = useState(false);
@@ -14,6 +25,28 @@ export default function DisputeSummaryPage({ params }: { params: { id: string } 
     inconsistencies: string[];
     suggestedOutcome: string;
   } | null>(null);
+
+  const contractAddress = process.env.NEXT_PUBLIC_PROJECT_CONTRACT_ADDRESS as `0x${string}` | undefined;
+  const milestoneIdBigInt = (() => {
+    try {
+      return BigInt(params.id);
+    } catch {
+      return undefined;
+    }
+  })();
+
+  const {
+    data: isResolved,
+    refetch: refetchStatus,
+    isLoading: statusLoading,
+  } = useReadContract({
+    abi: PROJECT_READ_ABI,
+    address: contractAddress!,
+    functionName: "isMilestoneResolved",
+    args: milestoneIdBigInt !== undefined ? [milestoneIdBigInt] : undefined,
+    // only enable when we have address and id parsed
+    query: { enabled: Boolean(contractAddress && milestoneIdBigInt !== undefined) },
+  });
 
   const fetchAISummary = async () => {
     setLoading(true);
@@ -47,13 +80,38 @@ export default function DisputeSummaryPage({ params }: { params: { id: string } 
     }
   };
 
+  // Re-check status after generating or on mount
+  useEffect(() => {
+    if (refetchStatus) {
+      refetchStatus();
+    }
+  }, [refetchStatus, summary?.summaryText]);
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">AI Dispute Summary</h1>
-        <Button onClick={fetchAISummary} disabled={loading}>
-          {loading ? 'Generating...' : 'Generate AI Summary'}
-        </Button>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-bold">AI Dispute Summary</h1>
+          {isResolved ? (
+            <span className="px-2.5 py-1 rounded-md text-xs font-medium border bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-200 dark:border-emerald-800">
+              Resolved
+            </span>
+          ) : statusLoading ? (
+            <span className="text-xs text-muted-foreground">Checking status…</span>
+          ) : null}
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={fetchAISummary}
+            disabled={loading || Boolean(isResolved)}
+            title={isResolved ? 'Dispute resolved. Summary is final.' : 'Generate AI Summary'}
+          >
+            {isResolved ? 'Finalized' : loading ? 'Generating...' : 'Generate AI Summary'}
+          </Button>
+          <Button variant="ghost" onClick={() => refetchStatus?.()} disabled={statusLoading}>
+            {statusLoading ? 'Refreshing…' : 'Refresh Status'}
+          </Button>
+        </div>
       </div>
 
       {error && (
@@ -78,6 +136,13 @@ export default function DisputeSummaryPage({ params }: { params: { id: string } 
           {/* Summary Overview */}
           <Card className="p-6">
             <h2 className="text-lg font-semibold mb-3">Summary</h2>
+            <div className="flex items-center gap-2 mb-2">
+              {isResolved && (
+                <span className="px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-200">
+                  Final
+                </span>
+              )}
+            </div>
             <p className="text-sm leading-relaxed">{summary.summaryText}</p>
           </Card>
 
