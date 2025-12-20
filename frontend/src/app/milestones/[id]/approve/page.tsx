@@ -158,10 +158,4 @@ export default function ApproveMilestonePage({ params }: { params: { id: string 
     </div>
   );
 }
-            </p>
-          )}
-        </form>
-      </Card>
-    </div>
-  );
-}
+

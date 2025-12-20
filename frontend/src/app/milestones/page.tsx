@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +17,7 @@ interface Milestone {
 
 export default function MilestonesPage() {
   const [selectedFilter, setSelectedFilter] = useState<MilestoneStatus | "All">("All");
+  const router = useRouter();
 
   // Sample milestone data
   const milestones: Milestone[] = [
@@ -104,7 +106,7 @@ export default function MilestonesPage() {
                     {milestone.amount} ETH
                   </p>
                 </div>
-                <Button size="sm">View</Button>
+                <Button size="sm" onClick={() => router.push(`/milestones/${milestone.id}`)}>View</Button>
               </div>
             </Card>
           ))

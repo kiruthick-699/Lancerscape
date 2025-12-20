@@ -4,6 +4,7 @@ import "./globals.css";
 import { MainLayout } from "@/components/MainLayout";
 import { ThemeProvider } from "next-themes";
 import { Web3Provider } from "@/providers/Web3Provider";
+import { ToastProvider } from "@/components/ui/use-toast";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -30,7 +31,9 @@ export default function RootLayout({
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <Web3Provider>
           <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-            <MainLayout>{children}</MainLayout>
+            <ToastProvider>
+              <MainLayout>{children}</MainLayout>
+            </ToastProvider>
           </ThemeProvider>
         </Web3Provider>
       </body>

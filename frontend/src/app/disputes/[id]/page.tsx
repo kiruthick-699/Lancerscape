@@ -3,14 +3,16 @@
 import { useState, useEffect } from "react";
 import { useAccount } from "wagmi";
 import { useResolveDispute } from "@/hooks/useProjectContract";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
 import { getDispute, uploadEvidence, generateAISummary } from "@/lib/api/disputes";
 
-export default function DisputeDetailsPage({ params }: { params: { id: string } }) {
+export default function DisputeDetailsPage() {
   const router = useRouter();
+  const routeParams = useParams();
+  const id = (routeParams?.id as string) || "";
   const { address, isConnected } = useAccount();
   const { toast } = useToast();
 
@@ -24,8 +26,7 @@ export default function DisputeDetailsPage({ params }: { params: { id: string } 
   const adminAddress = process.env.NEXT_PUBLIC_ADMIN_ADDRESS?.toLowerCase();
 
   // Wagmi: resolve dispute hook (project address from env or dispute data)
-  const projectAddress =
-    (process.env.NEXT_PUBLIC_PROJECT_ADDRESS as string | undefined) || dispute?.projectId;
+  const projectAddress = (process.env.NEXT_PUBLIC_PROJECT_ADDRESS as string | undefined) || dispute?.projectId;
   const {
     write: resolveWrite,
     isPending: isResolvePending,
@@ -41,28 +42,24 @@ export default function DisputeDetailsPage({ params }: { params: { id: string } 
       try {
         setLoading(true);
         setError(null);
-        const result = await getDispute(params.id);
+        const result = await getDispute(id);
         setDispute(result.dispute);
       } catch (err) {
-        console.error('Error fetching dispute:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load dispute');
+        console.error("Error fetching dispute:", err);
+        setError(err instanceof Error ? err.message : "Failed to load dispute");
       } finally {
         setLoading(false);
       }
     };
 
     fetchDispute();
-  }, [params.id]);
+  }, [id]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const selectedFiles = Array.from(e.target.files);
       if (selectedFiles.length > 5) {
-        toast({
-          title: "Too Many Files",
-          description: "Maximum 5 files allowed",
-          variant: "destructive",
-        });
+        toast({ title: "Too Many Files", description: "Maximum 5 files allowed", variant: "destructive" });
         return;
       }
       setFiles(selectedFiles);
@@ -71,49 +68,27 @@ export default function DisputeDetailsPage({ params }: { params: { id: string } 
 
   const handleUploadEvidence = async () => {
     if (!isConnected || !address) {
-      toast({
-        title: "Wallet Not Connected",
-        description: "Please connect your wallet to upload evidence",
-        variant: "destructive",
-      });
+      toast({ title: "Wallet Not Connected", description: "Please connect your wallet to upload evidence", variant: "destructive" });
       return;
     }
 
     if (files.length === 0) {
-      toast({
-        title: "No Files Selected",
-        description: "Please select at least one file to upload",
-        variant: "destructive",
-      });
+      toast({ title: "No Files Selected", description: "Please select at least one file to upload", variant: "destructive" });
       return;
     }
 
     setUploadLoading(true);
 
     try {
-      const result = await uploadEvidence({
-        disputeId: params.id,
-        uploadedBy: address,
-        files,
-      });
-
-      toast({
-        title: "Evidence Uploaded",
-        description: `Successfully uploaded ${result.uploadedFiles.length} file(s)`,
-        variant: "default",
-      });
-
+      const result = await uploadEvidence({ disputeId: params.id, uploadedBy: address, files });
+      toast({ title: "Evidence Uploaded", description: `Successfully uploaded ${result.uploadedFiles.length} file(s)`, variant: "default" });
       // Refresh dispute data
       const updatedDispute = await getDispute(params.id);
       setDispute(updatedDispute.dispute);
       setFiles([]);
     } catch (err) {
-      console.error('Error uploading evidence:', err);
-      toast({
-        title: "Upload Failed",
-        description: err instanceof Error ? err.message : "Failed to upload evidence",
-        variant: "destructive",
-      });
+      console.error("Error uploading evidence:", err);
+      toast({ title: "Upload Failed", description: err instanceof Error ? err.message : "Failed to upload evidence", variant: "destructive" });
     } finally {
       setUploadLoading(false);
     }
@@ -121,31 +96,18 @@ export default function DisputeDetailsPage({ params }: { params: { id: string } 
 
   const handleGenerateAIAnalysis = async () => {
     setAiLoading(true);
-
     try {
-      await generateAISummary(params.id);
-
-      toast({
-        title: "AI Analysis Complete",
-        description: "AI summary has been generated",
-        variant: "default",
-      });
-
-      // Redirect to summary page
-      router.push(`/disputes/${params.id}/summary`);
+      await generateAISummary(id);
+      toast({ title: "AI Analysis Complete", description: "AI summary has been generated", variant: "default" });
+      router.push(`/disputes/${id}/summary`);
     } catch (err) {
-      console.error('Error generating AI analysis:', err);
-      toast({
-        title: "AI Analysis Failed",
-        description: err instanceof Error ? err.message : "Failed to generate AI analysis",
-        variant: "destructive",
-      });
+      console.error("Error generating AI analysis:", err);
+      toast({ title: "AI Analysis Failed", description: err instanceof Error ? err.message : "Failed to generate AI analysis", variant: "destructive" });
     } finally {
       setAiLoading(false);
     }
   };
 
-  // Handle admin resolution flow: on-chain then backend
   const handleAdminResolve = async (decision: "client" | "freelancer") => {
     if (!dispute) return;
     if (!projectAddress) {
@@ -162,9 +124,7 @@ export default function DisputeDetailsPage({ params }: { params: { id: string } 
     }
 
     setResolving(decision);
-
     try {
-      // 1) Send on-chain resolution
       resolveWrite?.({ disputeId: Number(dispute.milestoneId), decision });
     } catch (err) {
       console.error("Error initiating on-chain resolve:", err);
@@ -173,17 +133,15 @@ export default function DisputeDetailsPage({ params }: { params: { id: string } 
     }
   };
 
-  // Toasts for wagmi transaction states
   useEffect(() => {
     if (isResolveConfirmed && resolving) {
       toast({ title: "On-chain Resolved", description: "Updating backend status..." });
-      // 2) Update backend
       (async () => {
         try {
           const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
-          const res = await fetch(`${apiUrl}/api/admin/disputes/${params.id}/resolve`, {
+          const res = await fetch(`${apiUrl}/api/admin/disputes/${id}/resolve`, {
             method: "POST",
-            headers: { 
+            headers: {
               "Content-Type": "application/json",
               "x-admin-address": address?.toLowerCase() || "",
             },
@@ -194,8 +152,7 @@ export default function DisputeDetailsPage({ params }: { params: { id: string } 
             throw new Error(data.error || `Backend update failed (${res.status})`);
           }
           toast({ title: "Dispute Resolved", description: "Backend updated successfully" });
-          // Refresh dispute
-          const updatedDispute = await getDispute(params.id);
+          const updatedDispute = await getDispute(id);
           setDispute(updatedDispute.dispute);
         } catch (err) {
           console.error("Backend resolve error:", err);
@@ -205,7 +162,7 @@ export default function DisputeDetailsPage({ params }: { params: { id: string } 
         }
       })();
     }
-  }, [isResolveConfirmed, resolving, params.id, toast]);
+  }, [isResolveConfirmed, resolving, id, toast, address]);
 
   useEffect(() => {
     if (isResolveError && resolveError) {
@@ -229,70 +186,16 @@ export default function DisputeDetailsPage({ params }: { params: { id: string } 
         <Card className="p-6">
           <h2 className="text-lg font-semibold text-red-600 mb-2">Error Loading Dispute</h2>
           <p className="text-muted-foreground">{error || "Dispute not found"}</p>
-        {/* Admin Decision Card */}
-        {adminAddress ? (
-          <Card className="p-6 space-y-4">
-            <h2 className="text-lg font-semibold">Admin Decision</h2>
-            <p className="text-sm text-muted-foreground">Resolve the dispute by awarding to one party.</p>
+        </Card>
+      </div>
+    );
+  }
 
-            <div className="grid grid-cols-2 gap-3">
-              <Button
-                variant="destructive"
-                disabled={
-                  !!dispute.resolvedAt ||
-                  isResolvePending ||
-                  isResolveConfirming ||
-                  resolving !== null ||
-                  !isConnected ||
-                  address?.toLowerCase() !== adminAddress
-                }
-                onClick={() => handleAdminResolve("client")}
-              >
-                {resolving === "client" || isResolvePending || isResolveConfirming ? (
-                  <span className="flex items-center justify-center space-x-2">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    <span>Resolving to Client...</span>
-                  </span>
-                ) : (
-                  "Award to Client"
-                )}
-              </Button>
-
-              <Button
-                variant="default"
-                disabled={
-                  !!dispute.resolvedAt ||
-                  isResolvePending ||
-                  isResolveConfirming ||
-                  resolving !== null ||
-                  !isConnected ||
-                  address?.toLowerCase() !== adminAddress
-                }
-                onClick={() => handleAdminResolve("freelancer")}
-              >
-                {resolving === "freelancer" || isResolvePending || isResolveConfirming ? (
-                  <span className="flex items-center justify-center space-x-2">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    <span>Resolving to Freelancer...</span>
-                  </span>
-                ) : (
-                  "Award to Freelancer"
-                )}
-              </Button>
-            </div>
-
-            {address?.toLowerCase() !== adminAddress && (
-              <p className="text-sm text-yellow-600">Connect with the admin wallet to enable resolution.</p>
-            )}
-
-            {dispute.resolvedAt && (
-              <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded text-sm">
-                ✓ Dispute resolved on {new Date(dispute.resolvedAt).toLocaleString()}.
-              </div>
-            )}
-          </Card>
-        ) : null}
-        
+  return (
+    <div className="max-w-2xl mx-auto py-12 space-y-6">
+      {/* Evidence Upload Card */}
+      <Card className="p-6 space-y-4">
+        <h2 className="text-lg font-semibold">Upload Evidence</h2>
         <div>
           <label className="block font-medium mb-2">Select Files (Max 5, 10MB each)</label>
           <input
@@ -304,17 +207,11 @@ export default function DisputeDetailsPage({ params }: { params: { id: string } 
             className="block w-full border rounded px-3 py-2 bg-background"
           />
           {files.length > 0 && (
-            <div className="mt-2 text-sm text-muted-foreground">
-              Selected: {files.map(f => f.name).join(", ")}
-            </div>
+            <div className="mt-2 text-sm text-muted-foreground">Selected: {files.map((f) => f.name).join(", ")}</div>
           )}
         </div>
 
-        <Button
-          onClick={handleUploadEvidence}
-          disabled={!isConnected || uploadLoading || files.length === 0}
-          className="w-full"
-        >
+        <Button onClick={handleUploadEvidence} disabled={!isConnected || uploadLoading || files.length === 0} className="w-full">
           {uploadLoading ? (
             <span className="flex items-center justify-center space-x-2">
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
@@ -325,17 +222,13 @@ export default function DisputeDetailsPage({ params }: { params: { id: string } 
           )}
         </Button>
 
-        {!isConnected && (
-          <p className="text-sm text-yellow-600">Connect your wallet to upload evidence</p>
-        )}
+        {!isConnected && <p className="text-sm text-yellow-600">Connect your wallet to upload evidence</p>}
       </Card>
 
       {/* AI Analysis Card */}
       <Card className="p-6 space-y-4">
         <h2 className="text-lg font-semibold">AI Analysis</h2>
-        <p className="text-sm text-muted-foreground">
-          Generate an AI-powered analysis of the dispute based on submitted evidence.
-        </p>
+        <p className="text-sm text-muted-foreground">Generate an AI-powered analysis of the dispute based on submitted evidence.</p>
 
         {dispute.aiSummary && (
           <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded text-sm">
@@ -343,12 +236,7 @@ export default function DisputeDetailsPage({ params }: { params: { id: string } 
           </div>
         )}
 
-        <Button
-          onClick={handleGenerateAIAnalysis}
-          disabled={aiLoading}
-          className="w-full"
-          variant={dispute.aiSummary ? "outline" : "default"}
-        >
+        <Button onClick={handleGenerateAIAnalysis} disabled={aiLoading} className="w-full" variant={dispute.aiSummary ? "outline" : "default"}>
           {aiLoading ? (
             <span className="flex items-center justify-center space-x-2">
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
@@ -363,58 +251,54 @@ export default function DisputeDetailsPage({ params }: { params: { id: string } 
       </Card>
 
       {/* Admin Decision Card */}
-      <Card className="p-6 space-y-4">
-        <h2 className="text-lg font-semibold">Admin Decision</h2>
-        <p className="text-sm text-muted-foreground">Resolve the dispute by awarding to one party.</p>
+      {adminAddress ? (
+        <Card className="p-6 space-y-4">
+          <h2 className="text-lg font-semibold">Admin Decision</h2>
+          <p className="text-sm text-muted-foreground">Resolve the dispute by awarding to one party.</p>
 
-        <div className="grid grid-cols-2 gap-3">
-          <Button
-            variant="destructive"
-            disabled={
-              !!dispute.resolvedAt ||
-              isResolvePending ||
-              isResolveConfirming ||
-              resolving !== null
-            }
-            onClick={() => handleAdminResolve("client")}
-          >
-            {resolving === "client" || isResolvePending || isResolveConfirming ? (
-              <span className="flex items-center justify-center space-x-2">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                <span>Resolving to Client...</span>
-              </span>
-            ) : (
-              "Award to Client"
-            )}
-          </Button>
+          <div className="grid grid-cols-2 gap-3">
+            <Button
+              variant="destructive"
+              disabled={!!dispute.resolvedAt || isResolvePending || isResolveConfirming || resolving !== null || !isConnected || address?.toLowerCase() !== adminAddress}
+              onClick={() => handleAdminResolve("client")}
+            >
+              {resolving === "client" || isResolvePending || isResolveConfirming ? (
+                <span className="flex items-center justify-center space-x-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  <span>Resolving to Client...</span>
+                </span>
+              ) : (
+                "Award to Client"
+              )}
+            </Button>
 
-          <Button
-            variant="default"
-            disabled={
-              !!dispute.resolvedAt ||
-              isResolvePending ||
-              isResolveConfirming ||
-              resolving !== null
-            }
-            onClick={() => handleAdminResolve("freelancer")}
-          >
-            {resolving === "freelancer" || isResolvePending || isResolveConfirming ? (
-              <span className="flex items-center justify-center space-x-2">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                <span>Resolving to Freelancer...</span>
-              </span>
-            ) : (
-              "Award to Freelancer"
-            )}
-          </Button>
-        </div>
-
-        {dispute.resolvedAt && (
-          <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded text-sm">
-            ✓ Dispute resolved on {new Date(dispute.resolvedAt).toLocaleString()}.
+            <Button
+              variant="default"
+              disabled={!!dispute.resolvedAt || isResolvePending || isResolveConfirming || resolving !== null || !isConnected || address?.toLowerCase() !== adminAddress}
+              onClick={() => handleAdminResolve("freelancer")}
+            >
+              {resolving === "freelancer" || isResolvePending || isResolveConfirming ? (
+                <span className="flex items-center justify-center space-x-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  <span>Resolving to Freelancer...</span>
+                </span>
+              ) : (
+                "Award to Freelancer"
+              )}
+            </Button>
           </div>
-        )}
-      </Card>
+
+          {address?.toLowerCase() !== adminAddress && (
+            <p className="text-sm text-yellow-600">Connect with the admin wallet to enable resolution.</p>
+          )}
+
+          {dispute.resolvedAt && (
+            <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded text-sm">
+              ✓ Dispute resolved on {new Date(dispute.resolvedAt).toLocaleString()}.
+            </div>
+          )}
+        </Card>
+      ) : null}
     </div>
   );
 }

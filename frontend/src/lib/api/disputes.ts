@@ -10,7 +10,8 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 /**
  * Sanitize string input to prevent XSS
  */
-function sanitizeString(input: string): string {
+function sanitizeString(input: unknown): string {
+  if (typeof input !== 'string') return '';
   return input
     .trim()
     .replace(/[<>]/g, '') // Remove potential HTML tags
@@ -159,7 +160,7 @@ export async function generateAISummary(disputeId: string): Promise<{
 /**
  * Get dispute details by ID
  */
-export async function getDispute(disputeId: string): Promise<{ success: boolean; dispute: any }> {
+export async function getDispute(disputeId: string): Promise<{ success: boolean; dispute: any | null }> {
   // Sanitize input
   const sanitized = sanitizeString(disputeId);
 
@@ -175,6 +176,10 @@ export async function getDispute(disputeId: string): Promise<{ success: boolean;
   });
 
   if (!response.ok) {
+    // Gracefully handle 404 without throwing to reduce console noise
+    if (response.status === 404) {
+      return { success: false, dispute: null };
+    }
     const error = await response.json().catch(() => ({ error: 'Failed to fetch dispute' }));
     throw new Error(error.error || `HTTP ${response.status}`);
   }

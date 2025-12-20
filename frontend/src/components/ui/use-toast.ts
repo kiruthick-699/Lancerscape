@@ -1,3 +1,4 @@
+"use client";
 import * as React from "react"
 import { ToastProps, ToastProvider, useToastCore } from "./toast"
 
