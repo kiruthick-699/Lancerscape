@@ -1,41 +1,54 @@
 'use client';
 
 import React from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 
 const sidebarItems = [
-  { label: "Dashboard" },
-  { label: "Projects" },
-  { label: "Milestones" },
-  { label: "Disputes" },
-  { label: "Settings" },
+  { label: "Dashboard", href: "/dashboard" },
+  { label: "Projects", href: "/projects" },
+  { label: "Milestones", href: "/milestones" },
+  { label: "Disputes", href: "/disputes" },
+  { label: "Settings", href: "/settings" },
 ];
 
 export function MainLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+
   return (
     <div className="flex min-h-screen bg-background">
       {/* Sidebar */}
       <aside className="fixed left-0 top-0 h-full w-56 border-r bg-card flex flex-col py-6">
         <nav className="flex flex-col gap-2 px-4">
-          {sidebarItems.map((item) => (
-            <Button
-              key={item.label}
-              variant="ghost"
-              className="justify-start w-full"
-            >
-              {item.label}
-            </Button>
-          ))}
+          {sidebarItems.map((item) => {
+            const isActive = pathname === item.href;
+            return (
+              <Link key={item.label} href={item.href}>
+                <Button
+                  variant="ghost"
+                  className={cn(
+                    "justify-start w-full",
+                    isActive && "bg-accent text-accent-foreground"
+                  )}
+                >
+                  {item.label}
+                </Button>
+              </Link>
+            );
+          })}
         </nav>
       </aside>
       {/* Main content area */}
       <div className="flex-1 flex flex-col ml-56">
         {/* Top nav */}
         <header className="h-16 border-b bg-card flex items-center justify-between px-6 sticky top-0 z-10">
-          <span className="font-semibold text-lg">LancerScape</span>
+          <Link href="/" className="font-semibold text-lg hover:text-primary">
+            LancerScape
+          </Link>
           <div className="flex items-center gap-4">
             <ConnectButton />
             <ThemeToggle />

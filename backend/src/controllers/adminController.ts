@@ -53,45 +53,86 @@ export const getDispute = async (req: Request, res: Response): Promise<void> => 
 /**
  * resolveDispute
  *
- * Finalizes a dispute with an admin decision.
- * - Accepts disputeId (from params) and resolverDecision (body: "client" | "freelancer")
- * - Attaches resolution to the dispute record
- * - Does NOT perform any blockchain calls
- * - Returns { success: true, decision }
+ * Admin endpoint to finalize a dispute with a decision.
+ * 
+ * Features:
+ * - Accepts resolverDecision ("client" | "freelancer") from request body
+ * - Updates disputeDB entry with resolution
+ * - Marks status as Resolved
+ * - Preserves AI summary if generated
+ * - NO blockchain logic (metadata only)
+ * - NO private keys or sensitive data
+ * 
+ * @param req.params.id - Dispute ID
+ * @param req.body.resolverDecision - "client" or "freelancer"
+ * @returns { success: true, decision, dispute }
  */
 export const resolveDispute = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
     const { resolverDecision } = req.body as { resolverDecision?: 'client' | 'freelancer' };
+    const adminAddress = process.env.ADMIN_ADDRESS?.toLowerCase();
+    const callerAddress = (req.headers['x-admin-address'] as string | undefined)?.toLowerCase();
 
+    // Simple admin gate for MVP
+    if (adminAddress && callerAddress !== adminAddress) {
+      res.status(403).json({ error: 'Forbidden', details: 'Admin address mismatch' });
+      return;
+    }
+
+    // Validate dispute ID
     if (!id || typeof id !== 'string') {
-      res.status(400).json({ error: 'Invalid or missing dispute id' });
+      res.status(400).json({ 
+        error: 'Invalid or missing dispute id',
+        details: 'Dispute ID must be a non-empty string'
+      });
       return;
     }
 
+    // Validate resolverDecision
     if (resolverDecision !== 'client' && resolverDecision !== 'freelancer') {
-      res.status(400).json({ error: 'Invalid resolverDecision. Use "client" or "freelancer".' });
+      res.status(400).json({ 
+        error: 'Invalid resolverDecision',
+        details: 'Decision must be either "client" or "freelancer"'
+      });
       return;
     }
 
-    await resolveDisputeRecord(id, resolverDecision);
+    // Resolve dispute (updates DB, marks as Resolved, saves AI summary if present)
+    const resolvedDispute = await resolveDisputeRecord(id, resolverDecision);
 
-    res.status(200).json({ success: true, decision: resolverDecision });
+    res.status(200).json({ 
+      success: true, 
+      message: 'Dispute resolved successfully',
+      decision: resolverDecision,
+      dispute: {
+        id: resolvedDispute.id,
+        status: resolvedDispute.status,
+        resolution: resolvedDispute.resolution,
+        resolvedAt: resolvedDispute.resolvedAt,
+        hasAISummary: !!resolvedDispute.aiSummary
+      }
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error('resolveDispute error:', message);
 
+    // Handle specific error cases
     if (message === 'Dispute not found') {
       res.status(404).json({ error: 'Dispute not found' });
       return;
     }
 
     if (message === 'Dispute already finalized') {
-      res.status(409).json({ error: 'Dispute already finalized' });
+      res.status(409).json({ error: 'Dispute already resolved' });
       return;
     }
 
-    res.status(500).json({ error: 'Failed to resolve dispute' });
+    // Generic error response
+    res.status(500).json({ 
+      error: 'Failed to resolve dispute',
+      ...(process.env.NODE_ENV === 'development' && { details: message })
+    });
   }
 };
 

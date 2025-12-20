@@ -2,63 +2,147 @@
  * backend/src/controllers/disputeController.ts
  * 
  * Dispute-related controller functions
- * Phase 7: Implement business logic for dispute handling
+ * Implements full dispute lifecycle API functionality
  */
 
 import { Request, Response } from 'express';
-import { fetchDispute, attachAISummary, saveEvidence } from '../services/disputeService';
-import { generateDisputeSummary } from '../ai/aiEngine';
+import { z } from 'zod';
+import { 
+  createDisputeEntry, 
+  fetchDispute, 
+  attachAISummary, 
+  saveEvidence,
+  getAllDisputes,
+  updateDisputeStatus 
+} from '../services/disputeService';
+
+// Validation schemas
+const openDisputeSchema = z.object({
+  projectId: z.string().min(1, 'Project ID is required'),
+  milestoneId: z.number().int().min(0, 'Milestone ID must be a non-negative integer'),
+  reason: z.string().min(10, 'Reason must be at least 10 characters'),
+  openedBy: z.string().regex(/^0x[a-fA-F0-9]{40}$/, 'Invalid Ethereum address'),
+  projectDescription: z.string().optional(),
+  milestoneDescription: z.string().optional(),
+});
+
+const uploadEvidenceSchema = z.object({
+  disputeId: z.string().min(1, 'Dispute ID is required'),
+  uploadedBy: z.string().regex(/^0x[a-fA-F0-9]{40}$/, 'Invalid Ethereum address'),
+});
+
+const aiSummarySchema = z.object({
+  disputeId: z.string().min(1, 'Dispute ID is required'),
+});
+
+const listDisputesSchema = z.object({
+  status: z.enum(['Pending', 'EvidenceSubmitted', 'AI_SummaryGenerated', 'AdminReview', 'Resolved']).optional(),
+  projectId: z.string().optional(),
+  limit: z.number().int().min(1).max(100).optional(),
+  offset: z.number().int().min(0).optional(),
+});
 
 /**
  * openDispute
  * 
- * Purpose: Open a new dispute for a milestone
+ * Purpose: Create a new dispute record
+ * Status transition: null → Pending
  * 
- * Phase 7 Implementation:
- * - Validate request body (projectAddress, milestoneId, reason, evidence metadata)
- * - Verify the caller is authorized (client or freelancer)
- * - Call smart contract's openDispute() function via ethers.js/viem
- * - Store dispute metadata in database (optional)
- * - Return transaction hash and dispute ID
- * 
- * Security:
- * - DO NOT handle private keys server-side
- * - User should sign transactions client-side
- * - Server only validates and facilitates the interaction
+ * Request body:
+ * - projectId: string
+ * - milestoneId: number
+ * - reason: string (min 10 chars)
+ * - openedBy: ethereum address
+ * - projectDescription: string (optional)
+ * - milestoneDescription: string (optional)
  */
 export const openDispute = async (req: Request, res: Response): Promise<void> => {
-  // TODO: Implement openDispute logic in Phase 7
-  res.status(501).json({ error: 'Not implemented' });
+  try {
+    // Validate request body
+    const validationResult = openDisputeSchema.safeParse(req.body);
+    
+    if (!validationResult.success) {
+      res.status(400).json({
+        error: 'Validation failed',
+        details: validationResult.error.issues.map((err: any) => ({
+          field: err.path.join('.'),
+          message: err.message,
+        })),
+      });
+      return;
+    }
+
+    const { 
+      projectId, 
+      milestoneId, 
+      reason, 
+      openedBy,
+      projectDescription,
+      milestoneDescription 
+    } = validationResult.data;
+
+    // Create dispute entry with Pending status
+    const dispute = await createDisputeEntry(
+      projectId,
+      milestoneId,
+      openedBy,
+      reason,
+      projectDescription,
+      milestoneDescription
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Dispute created successfully',
+      dispute: {
+        id: dispute.id,
+        projectId: dispute.projectId,
+        milestoneId: dispute.milestoneId,
+        status: dispute.status,
+        reason: dispute.reason,
+        openedBy: dispute.openedBy,
+        createdAt: dispute.createdAt,
+      },
+    });
+  } catch (error) {
+    console.error('Error opening dispute:', error);
+    
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({
+      error: 'Failed to open dispute',
+      details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
+    });
+  }
 };
 
 /**
  * uploadEvidence
  * 
- * Purpose: Handle evidence file uploads for a dispute
+ * Purpose: Handle evidence file uploads
+ * Status transition: Pending → EvidenceSubmitted
  * 
- * Phase 7 Implementation:
- * - Validate uploaded files (req.files from multer middleware)
- * - Generate unique identifiers for each file
- * - Upload files to IPFS or decentralized storage
- * - Return IPFS hashes/CIDs for on-chain storage
- * - Clean up temporary local files after upload
- * - Optionally store file metadata in database
- * 
- * Security:
- * - Files already validated by multer middleware (type, size, count)
- * - Scan files for malware before IPFS upload (optional)
- * - DO NOT store sensitive data unencrypted
+ * Request body:
+ * - disputeId: string
+ * - uploadedBy: ethereum address
+ * Files: req.files (handled by multer middleware)
  */
 export const uploadEvidence = async (req: Request, res: Response): Promise<void> => {
   try {
-    // Extract disputeId from request body
-    const { disputeId } = req.body;
-
-    // Validate disputeId
-    if (!disputeId || typeof disputeId !== 'string') {
-      res.status(400).json({ error: 'Invalid or missing disputeId' });
+    // Validate request body
+    const validationResult = uploadEvidenceSchema.safeParse(req.body);
+    
+    if (!validationResult.success) {
+      res.status(400).json({
+        error: 'Validation failed',
+        details: validationResult.error.issues.map((err: any) => ({
+          field: err.path.join('.'),
+          message: err.message,
+        })),
+      });
       return;
     }
+
+    const { disputeId, uploadedBy } = validationResult.data;
 
     // Validate that files were uploaded
     if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {
@@ -66,33 +150,36 @@ export const uploadEvidence = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    // Extract file paths from uploaded files
-    // Store only file paths/names, NOT actual file data in memory
-    const filePaths = (req.files as Express.Multer.File[]).map((file) => {
-      // Use filename (generated by multer) as reference
-      // TODO: Phase 7 - Upload to IPFS and use CID instead of local path
-      return file.filename;
-    });
+    // Extract file metadata (store metadata only, not file content)
+    const evidenceMetadata = (req.files as Express.Multer.File[]).map((file) => ({
+      filename: file.filename,
+      originalName: file.originalname,
+      mimeType: file.mimetype,
+      size: file.size,
+      uploadedBy,
+      uploadedAt: new Date().toISOString(),
+    }));
 
-    // Save evidence file references to dispute
-    const updatedDispute = await saveEvidence(disputeId, filePaths);
+    // Save evidence metadata and update dispute status
+    const updatedDispute = await saveEvidence(disputeId, evidenceMetadata, uploadedBy);
 
-    // Return list of saved file references
     res.status(200).json({
-      disputeId,
-      evidenceFiles: filePaths,
-      totalFiles: filePaths.length,
-      message: 'Evidence files uploaded successfully',
+      success: true,
+      message: 'Evidence uploaded successfully',
       dispute: {
         id: updatedDispute.id,
+        status: updatedDispute.status,
         evidenceCount: updatedDispute.evidenceHashes?.length || 0,
       },
+      uploadedFiles: evidenceMetadata.map(e => ({
+        filename: e.filename,
+        originalName: e.originalName,
+        size: e.size,
+      })),
     });
   } catch (error) {
-    // Log error for debugging
     console.error('Error uploading evidence:', error);
 
-    // Return safe error message
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     res.status(500).json({
       error: 'Failed to upload evidence',
@@ -106,26 +193,121 @@ export const uploadEvidence = async (req: Request, res: Response): Promise<void>
  * 
  * Purpose: Retrieve dispute details by ID
  * 
- * Phase 7 Implementation:
- * - Extract dispute ID from req.params.id
- * - Query smart contract for on-chain dispute data
- * - Optionally fetch additional metadata from database
- * - Retrieve evidence files from IPFS if needed
- * - Return comprehensive dispute object with:
- *   - Milestone ID
- *   - Status (open, resolved, etc.)
- *   - Evidence hashes
- *   - Timestamps
- *   - Resolution outcome (if resolved)
- * 
- * Security:
- * - Validate dispute ID format
- * - Check if caller has permission to view dispute
- * - DO NOT expose private keys or sensitive contract data
+ * URL params:
+ * - id: dispute ID
  */
 export const getDispute = async (req: Request, res: Response): Promise<void> => {
-  // TODO: Implement getDispute logic in Phase 7
-  res.status(501).json({ error: 'Not implemented' });
+  try {
+    const { id } = req.params;
+
+    // Validate dispute ID
+    if (!id || typeof id !== 'string') {
+      res.status(400).json({ error: 'Invalid dispute ID' });
+      return;
+    }
+
+    // Fetch dispute from database
+    const dispute = await fetchDispute(id);
+
+    if (!dispute) {
+      res.status(404).json({ error: 'Dispute not found' });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      dispute: {
+        id: dispute.id,
+        projectId: dispute.projectId,
+        milestoneId: dispute.milestoneId,
+        status: dispute.status,
+        reason: dispute.reason,
+        openedBy: dispute.openedBy,
+        evidenceCount: dispute.evidenceHashes?.length || 0,
+        evidenceFiles: dispute.evidenceHashes || [],
+        aiSummary: dispute.aiSummary || null,
+        freelancerResponse: dispute.freelancerResponse || null,
+        createdAt: dispute.createdAt,
+        lastModified: dispute.lastModified,
+        resolvedAt: dispute.resolvedAt || null,
+        resolution: dispute.resolution || null,
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching dispute:', error);
+
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({
+      error: 'Failed to fetch dispute',
+      details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
+    });
+  }
+};
+
+/**
+ * listDisputes
+ * 
+ * Purpose: List all disputes with optional filtering
+ * 
+ * Query params (optional):
+ * - status: filter by status
+ * - projectId: filter by project
+ * - limit: max results (default 20, max 100)
+ * - offset: pagination offset (default 0)
+ */
+export const listDisputes = async (req: Request, res: Response): Promise<void> => {
+  try {
+    // Validate query parameters
+    const validationResult = listDisputesSchema.safeParse({
+      status: req.query.status,
+      projectId: req.query.projectId,
+      limit: req.query.limit ? parseInt(req.query.limit as string) : undefined,
+      offset: req.query.offset ? parseInt(req.query.offset as string) : undefined,
+    });
+
+    if (!validationResult.success) {
+      res.status(400).json({
+        error: 'Validation failed',
+        details: validationResult.error.issues.map((err: any) => ({
+          field: err.path.join('.'),
+          message: err.message,
+        })),
+      });
+      return;
+    }
+
+    const { status, projectId, limit = 20, offset = 0 } = validationResult.data;
+
+    // Fetch disputes from database with filters
+    const { disputes, total } = await getAllDisputes({ status, projectId, limit, offset });
+
+    res.status(200).json({
+      success: true,
+      total,
+      count: disputes.length,
+      limit,
+      offset,
+      disputes: disputes.map((d: any) => ({
+        id: d.id,
+        projectId: d.projectId,
+        milestoneId: d.milestoneId,
+        status: d.status,
+        openedBy: d.openedBy,
+        evidenceCount: d.evidenceHashes?.length || 0,
+        hasAISummary: !!d.aiSummary,
+        createdAt: d.createdAt,
+        resolvedAt: d.resolvedAt || null,
+      })),
+    });
+  } catch (error) {
+    console.error('Error listing disputes:', error);
+
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({
+      error: 'Failed to list disputes',
+      details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
+    });
+  }
 };
 
 /**
@@ -175,46 +357,28 @@ export const generateAISummary = async (req: Request, res: Response): Promise<vo
       return;
     }
 
-    // Extract fields for AI analysis
-    // TODO: Phase 7 - Fetch additional context (project details, milestone details)
-    const projectDescription = dispute.projectDescription || 'No project description available';
-    const milestoneDescription = dispute.milestoneDescription || 'No milestone description available';
-    const clientStatement = dispute.reason || 'No client statement provided';
-    const freelancerStatement = dispute.freelancerResponse || 'No freelancer response provided';
-    
-    // Use evidence file references (IPFS CIDs or file names), not full file data
-    const evidenceFiles = dispute.evidenceHashes || [];
+    // MVP stub: return deterministic summary without external AI call
+    const aiSummary = {
+      summaryText: 'MVP summary: review submitted evidence and proceed to admin decision.',
+      suggestedOutcome: 'manual_review',
+      clientStrengths: [],
+      freelancerStrengths: [],
+      inconsistencies: [],
+    };
 
-    // Call AI engine to generate summary
-    const aiSummary = await generateDisputeSummary({
-      projectDescription,
-      milestoneDescription,
-      clientStatement,
-      freelancerStatement,
-      evidenceFiles,
-    });
-
-    // Prepare summary data for storage
     const summaryData = {
       summary: aiSummary.summaryText,
       recommendation: aiSummary.suggestedOutcome,
-      confidence: 0.85, // TODO: Phase 7 - Calculate or receive from AI
-      reasoning: JSON.stringify({
-        clientStrengths: aiSummary.clientStrengths,
-        freelancerStrengths: aiSummary.freelancerStrengths,
-        inconsistencies: aiSummary.inconsistencies,
-      }),
+      confidence: 0.5,
+      reasoning: JSON.stringify(aiSummary),
     };
 
-    // Save AI summary to dispute record
-    // TODO: Phase 7 - Replace with real database update
     await attachAISummary(disputeId, summaryData);
 
-    // Return AI summary to client
     res.status(200).json({
       disputeId,
       summary: aiSummary,
-      message: 'AI summary generated successfully',
+      message: 'AI summary (stub) generated successfully',
     });
   } catch (error) {
     // Log error for debugging (but don't expose details to client)

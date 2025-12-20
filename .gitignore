@@ -31,3 +31,4 @@ contracts/dist/
 *.log
 .idea/
 .vscode/settings.json
+node_modules

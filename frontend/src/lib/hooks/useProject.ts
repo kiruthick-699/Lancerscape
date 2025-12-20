@@ -1,24 +1,18 @@
 'use client';
 
-import { useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi';
 import { projectABI } from '@/lib/contracts';
 import { Address } from 'viem';
+import { useContractWrite } from './useContractWrite';
 
 /**
  * Hook to create a milestone in a project contract
  * @param projectAddress - Address of the Project contract
  */
 export function useCreateMilestone(projectAddress: Address) {
-  const { address: walletAddress } = useAccount();
-  const { writeContract, data: hash, isPending, error } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const { execute, isPending, isConfirming, isSuccess, error, hash } = useContractWrite();
 
   const createMilestone = async (title: string, amount: bigint) => {
-    if (!walletAddress) {
-      throw new Error('Wallet not connected');
-    }
-
-    writeContract({
+    await execute({
       address: projectAddress,
       abi: projectABI,
       functionName: 'createMilestone',
@@ -41,16 +35,10 @@ export function useCreateMilestone(projectAddress: Address) {
  * @param projectAddress - Address of the Project contract
  */
 export function useSubmitWork(projectAddress: Address) {
-  const { address: walletAddress } = useAccount();
-  const { writeContract, data: hash, isPending, error } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const { execute, isPending, isConfirming, isSuccess, error, hash } = useContractWrite();
 
   const submitWork = async (milestoneId: bigint, evidenceHash: string) => {
-    if (!walletAddress) {
-      throw new Error('Wallet not connected');
-    }
-
-    writeContract({
+    await execute({
       address: projectAddress,
       abi: projectABI,
       functionName: 'submitWork',
@@ -73,16 +61,10 @@ export function useSubmitWork(projectAddress: Address) {
  * @param projectAddress - Address of the Project contract
  */
 export function useApproveMilestone(projectAddress: Address) {
-  const { address: walletAddress } = useAccount();
-  const { writeContract, data: hash, isPending, error } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const { execute, isPending, isConfirming, isSuccess, error, hash } = useContractWrite();
 
   const approveMilestone = async (milestoneId: bigint) => {
-    if (!walletAddress) {
-      throw new Error('Wallet not connected');
-    }
-
-    writeContract({
+    await execute({
       address: projectAddress,
       abi: projectABI,
       functionName: 'approveMilestone',
@@ -105,16 +87,10 @@ export function useApproveMilestone(projectAddress: Address) {
  * @param projectAddress - Address of the Project contract
  */
 export function useOpenDispute(projectAddress: Address) {
-  const { address: walletAddress } = useAccount();
-  const { writeContract, data: hash, isPending, error } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const { execute, isPending, isConfirming, isSuccess, error, hash } = useContractWrite();
 
   const openDispute = async (milestoneId: bigint, reason: string) => {
-    if (!walletAddress) {
-      throw new Error('Wallet not connected');
-    }
-
-    writeContract({
+    await execute({
       address: projectAddress,
       abi: projectABI,
       functionName: 'openDispute',

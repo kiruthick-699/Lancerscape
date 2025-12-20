@@ -1,8 +1,9 @@
 'use client';
 
-import { useWriteContract, useWaitForTransactionReceipt, useReadContract, useAccount } from 'wagmi';
+import { useReadContract } from 'wagmi';
 import { projectFactoryABI } from '@/lib/contracts';
 import { Address } from 'viem';
+import { useContractWrite } from './useContractWrite';
 
 const FACTORY_ADDRESS = (process.env.NEXT_PUBLIC_FACTORY_ADDRESS || '0x') as Address;
 
@@ -10,20 +11,14 @@ const FACTORY_ADDRESS = (process.env.NEXT_PUBLIC_FACTORY_ADDRESS || '0x') as Add
  * Hook to create a new project via ProjectFactory
  */
 export function useCreateProject() {
-  const { address: walletAddress } = useAccount();
-  const { writeContract, data: hash, isPending, error } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const { execute, isPending, isConfirming, isSuccess, error, hash } = useContractWrite();
 
   const createProject = async (title: string, description: string, clientAddress: Address) => {
-    if (!walletAddress) {
-      throw new Error('Wallet not connected');
-    }
-
     if (!FACTORY_ADDRESS || FACTORY_ADDRESS === '0x') {
       throw new Error('Factory address not configured. Set NEXT_PUBLIC_FACTORY_ADDRESS in environment variables.');
     }
 
-    writeContract({
+    await execute({
       address: FACTORY_ADDRESS,
       abi: projectFactoryABI,
       functionName: 'createProject',

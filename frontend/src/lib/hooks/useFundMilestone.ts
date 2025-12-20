@@ -1,23 +1,17 @@
-import { useWriteContract, useWaitForTransactionReceipt, useAccount, usePrepareWriteContract } from 'wagmi';
 import { projectABI } from '@/lib/contracts';
 import { Address } from 'viem';
+import { useContractWrite } from './useContractWrite';
 
 /**
  * Hook to fund a milestone in a project contract
  * @param projectAddress - Address of the Project contract
  */
 export function useFundMilestone(projectAddress: Address) {
-  const { address: walletAddress } = useAccount();
-  const { writeContract, data: hash, isPending, error } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const { execute, isPending, isConfirming, isSuccess, error, hash } = useContractWrite();
 
   // This hook expects the caller to provide the milestoneId and amount (in wei)
   const fundMilestone = async (milestoneId: bigint, amount: bigint) => {
-    if (!walletAddress) {
-      throw new Error('Wallet not connected');
-    }
-
-    writeContract({
+    await execute({
       address: projectAddress,
       abi: projectABI,
       functionName: 'fundMilestone',
