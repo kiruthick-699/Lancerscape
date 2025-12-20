@@ -1,4 +1,4 @@
-# LancerScape 💼
+# LancerScape 
 
 [![Base Sepolia](https://img.shields.io/badge/Base%20Sepolia-84532-5c54db)]()
 [![Smart Contracts](https://img.shields.io/badge/Solidity-0.8.27-363636)]()
