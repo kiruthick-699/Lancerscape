@@ -22,16 +22,16 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen bg-background">
       {/* Sidebar */}
-      <aside className="fixed left-0 top-0 h-full w-56 border-r bg-card flex flex-col py-6">
-        <nav className="flex flex-col gap-2 px-4">
+      <aside className="fixed left-0 top-0 h-full w-64 border-r bg-card flex flex-col py-6">
+        <nav className="flex flex-col divide-y divide-border/30 px-4">
           {sidebarItems.map((item) => {
             const isActive = pathname === item.href;
             return (
-              <Link key={item.label} href={item.href}>
+              <Link key={item.label} href={item.href} className="py-1">
                 <Button
                   variant="ghost"
                   className={cn(
-                    "justify-start w-full",
+                    "justify-start w-full h-12 px-4 text-base font-medium",
                     isActive && "bg-accent text-accent-foreground"
                   )}
                 >
@@ -43,7 +43,7 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
         </nav>
       </aside>
       {/* Main content area */}
-      <div className="flex-1 flex flex-col ml-56">
+      <div className="flex-1 flex flex-col ml-64">
         {/* Top nav */}
         <header className="h-16 border-b bg-card flex items-center justify-between px-6 sticky top-0 z-10">
           <Link href="/" className="font-semibold text-lg hover:text-primary">
