@@ -515,3 +515,5 @@ MIT License - see [LICENSE](LICENSE) file for details
 [![GitHub](https://img.shields.io/badge/GitHub-kiruthick--699-black)]()
 [![Solidity](https://img.shields.io/badge/Solidity-0.8.27-363636)]()
 [![Next.js](https://img.shields.io/badge/Next.js-16.0-black)]()
+
+<!-- feature-1 badge test line -->
