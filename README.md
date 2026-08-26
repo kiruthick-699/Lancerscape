@@ -517,3 +517,4 @@ MIT License - see [LICENSE](LICENSE) file for details
 [![Next.js](https://img.shields.io/badge/Next.js-16.0-black)]()
 
 <!-- feature-1 badge test line -->
+<!-- feature-2 badge test line -->
